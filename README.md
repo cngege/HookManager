@@ -27,24 +27,29 @@
 
  ```cpp
 
-#include <iostream>
 #include "HookManager/HookManager.hpp"
+#include <iostream>
 
-int add(int a, int b) {
+HookInstance* h = nullptr;
+
+// hook在Release模式下一定要考虑到内联和优化的问题
+__declspec(noinline) int add(int a, int b) {
 	return a + b;
 }
 
 int hookadd(int a, int b) {
-	return a * b;
+	using fn = int(__fastcall*)(int, int);
+	return ((fn)h->origin)(a, b) * 10;
 }
 
 int main()
 {
+
 	std::cout << "add(5,6):" << add(5, 6) << std::endl;
-	auto h = HookManager::getInstance()->addHook((uintptr_t) & add, &hookadd);
+	h = HookManager::getInstance()->addHook((uintptr_t) & add, &hookadd);
 	h->hook();
 	std::cout << "hooked:" << std::endl;
-	std::cout << "add(5,6):" << add(5, 6) << std::endl;
+	std::cout << "add(5,6):" << add(5, 16) << std::endl;
 
 	std::cout << "removehook:" << std::endl;
 	h->unhook();
@@ -60,7 +65,7 @@ int main()
 ```
 add(5,6):11
 hooked:
-add(5,6):30
+add(5,6):210
 removehook:
 add(5,6):11
 ```
