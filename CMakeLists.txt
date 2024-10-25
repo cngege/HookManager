@@ -13,6 +13,15 @@ project ("HookManager")
 
 include_directories(include)
 
+if(CMAKE_BUILD_TYPE MATCHES Release)
+	MESSAGE(STATUS "PDB - 当前在 RELEASE 模式下 生成pdb文件")
+	set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Zi")
+
+
+	# 设置 Release 模式下链接器的调试信息
+	set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /DEBUG")
+endif()
+
 
 # 将源代码添加到此项目的可执行文件。
 add_executable (HookManager "main.cpp" )
