@@ -11,7 +11,12 @@ endif()
 
 project ("HookManager")
 
+
+# 将源代码添加到此项目的可执行文件。
+add_executable (HookManager "main.cpp" )
+
 include_directories(include)
+add_subdirectory(include)
 
 if(CMAKE_BUILD_TYPE MATCHES Release)
 	MESSAGE(STATUS "PDB - 当前在 RELEASE 模式下 生成pdb文件")
@@ -23,8 +28,8 @@ if(CMAKE_BUILD_TYPE MATCHES Release)
 endif()
 
 
-# 将源代码添加到此项目的可执行文件。
-add_executable (HookManager "main.cpp" )
+target_link_libraries(HookManager PRIVATE minhook)
+
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET HookManager PROPERTY CXX_STANDARD 20)
