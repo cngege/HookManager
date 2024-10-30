@@ -1,9 +1,9 @@
 ﻿// 定义应用程序的入口点。
 //
-#define USE_LIGHTHOOK
-//#define USE_MINHOOK
-//#define EXTERNAL_INCLUDE_HOOKHEADER 
-//#include <MinHook.h>
+//#define USE_LIGHTHOOK
+#define USE_MINHOOK
+#define EXTERNAL_INCLUDE_HOOKHEADER 
+#include <MinHook.h>
 //#include "LightHook/LightHook.h"
 
 #include "HookManager/HookManager.hpp"
