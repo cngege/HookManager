@@ -1,7 +1,14 @@
 ﻿// 定义应用程序的入口点。
 //
+#define USE_LIGHTHOOK
+//#define USE_MINHOOK
+//#define EXTERNAL_INCLUDE_HOOKHEADER 
+//#include <MinHook.h>
+//#include "LightHook/LightHook.h"
+
 #include "HookManager/HookManager.hpp"
 #include <iostream>
+
 
 HookInstance* h = nullptr;
 
@@ -22,11 +29,11 @@ int main()
 	h = HookManager::getInstance()->addHook((uintptr_t) & add, &hookadd);
 	h->hook();
 	std::cout << "hooked:" << std::endl;
-	std::cout << "add(5,6):" << add(5, 16) << std::endl;
+	std::cout << "add(7,8):" << add(7, 8) << std::endl;
 
 	std::cout << "removehook:" << std::endl;
 	h->unhook();
 
-	std::cout << "add(5,6):" << add(5, 6) << std::endl;
+	std::cout << "add(9,10):" << add(9, 10) << std::endl;
 	return 0;
 }
