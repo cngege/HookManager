@@ -4,7 +4,7 @@
 #define USE_MINHOOK
 #define EXTERNAL_INCLUDE_HOOKHEADER 
 #include <MinHook.h>
-//#include "LightHook/LightHook.h"
+//#include "LightHook/Source/LightHook.h"
 
 #include "HookManager/HookManager.hpp"
 #include <iostream>

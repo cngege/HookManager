@@ -1,4 +1,8 @@
-﻿#pragma once
+﻿/*
+* FROM https://github.com/cngege/HookManager IN CNGEGE
+*/
+
+#pragma once
 #ifndef HOOKMANAGER_HPP
 #define HOOKMANAGER_HPP
 
