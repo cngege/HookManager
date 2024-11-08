@@ -1,0 +1,6 @@
+[submodule "include/minhook"]
+	path = include/minhook
+	url = https://github.com/TsudaKageyu/minhook.git
+[submodule "include/LightHook"]
+	path = include/LightHook
+	url = https://github.com/SamuelTulach/LightHook.git
