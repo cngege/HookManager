@@ -102,6 +102,7 @@ auto HookManager::init()->void {
 }
 auto HookManager::uninit() -> void {
 #ifdef USE_MINHOOK
+    MH_RemoveHook(MH_ALL_HOOKS);
     MH_Uninitialize();
 #endif // USE_MINHOOK
 }
