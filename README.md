@@ -27,8 +27,14 @@
  ## TODO
  - [ ] 支持多次hook, hook后函数存储到数组,触发调用时遍历执行.
  - [x] 支持minhook, 并通过宏区分开不同hook.
+ - [x] 支持微软 [Detours](https://github.com/microsoft/Detours). 使用宏:`USE_DETOURS` 
  - [ ] 发生失败、错误、警告时的正反馈.
  - [ ] 使本项目支持~~CMAKE~~ xmake自动依赖功能.
+
+ ## 常用Hook库(已支持)
+ - [LightHook](https://github.com/SamuelTulach/LightHook).
+ - [minhook](https://github.com/TsudaKageyu/minhook).
+ - [Detours](https://github.com/microsoft/Detours).
 
  ## 示例代码：
 

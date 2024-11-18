@@ -30,6 +30,9 @@ endif()
 
 target_link_libraries(HookManager PRIVATE minhook)
 
+target_link_libraries(HookManager PRIVATE
+	${CMAKE_SOURCE_DIR}/lib/detours/detours.lib)
+
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET HookManager PROPERTY CXX_STANDARD 20)

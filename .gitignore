@@ -17,3 +17,5 @@ _deps
 # vs file
 /.vs
 
+# lib files
+/lib/detours
