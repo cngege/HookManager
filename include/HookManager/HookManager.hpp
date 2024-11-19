@@ -45,12 +45,10 @@ private:
 public:
     void* origin = nullptr;
 public:
-    HookInstance(){};
     HookInstance(uintptr_t ptr) : m_ptr(ptr), m_mapindex(ptr){};
     uintptr_t& ptr();
     uintptr_t ptr() const;
     uintptr_t mapindex() const { return m_mapindex; };
-    //void* pptr() { return (void*)&m_ptr; };
     bool hook();
     bool unhook();
 };
@@ -82,6 +80,7 @@ public:
     auto disableHook(HookInstance&) -> bool;
     auto enableAllHook() -> void;
     auto disableAllHook() -> void;
+    auto findHookInstance(uintptr_t) -> HookInstance*;
     
 private:
     HookManager();
@@ -278,6 +277,14 @@ auto HookManager::disableAllHook() -> void {
 #endif // USE_DETOURS
 }
 
+auto HookManager::findHookInstance(uintptr_t indexptr) -> HookInstance* {
+    std::shared_lock<std::shared_mutex> guard(map_lock_mutex);
+    auto it = hookInfoHash.find(indexptr);
+    if(it != hookInfoHash.end()) {
+        return &((*it).second.second);
+    }
+    return nullptr;
+}
 
 
 uintptr_t& HookInstance::ptr() {
