@@ -240,6 +240,9 @@ auto HookManager::enableHook(HookInstance& instance) -> bool {
     std::shared_lock<std::shared_mutex> guard(map_lock_mutex);
 #ifdef USE_LIGHTHOOK
     int ret = EnableHook(&hookInfoHash[instance.mapindex()].first);
+    if(ret == 0) {
+        on(msgtype::error, str_fmt("LightHook EnableHook 失败，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%d]", instance.describe().empty() ? "无" : instance.describe().c_str(), __FILE__, __FUNCTION__, __LINE__));
+    }
     instance.origin = hookInfoHash[instance.mapindex()].first.Trampoline;
     return ret;
 #endif // USE_LIGHTHOOK
@@ -312,7 +315,11 @@ auto HookManager::disableHook(HookInstance& instance) -> bool {
     std::shared_lock<std::shared_mutex> guard(map_lock_mutex);
 
 #ifdef USE_LIGHTHOOK
-    return DisableHook(&hookInfoHash[instance.mapindex()].first);
+    int ret = DisableHook(&hookInfoHash[instance.mapindex()].first);
+    if(ret == 0) {
+        on(msgtype::error, str_fmt("LightHook DisableHook 失败，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%d]", instance.describe().empty() ? "无" : instance.describe().c_str(), __FILE__, __FUNCTION__, __LINE__));
+    }
+    return ret;
 #endif // USE_LIGHTHOOK
 #ifdef USE_MINHOOK
     MH_STATUS status = MH_DisableHook((LPVOID)instance.ptr());
@@ -383,10 +390,9 @@ auto HookManager::enableAllHook() -> void {
 
 #ifdef USE_LIGHTHOOK
     for(auto& item : hookInfoHash) {
-        if(item.second.first.Enabled) {
-            if(!DisableHook(&item.second.first)) {
-                // TODO:
-                //spdlog::warn("DisableHook 关闭Hook失败({}) - fromFunction {} - in {}", (const void*)item.first, __FUNCTION__, __LINE__);
+        if(!item.second.first.Enabled) {
+            if(!EnableHook(&item.second.first)) {
+                on(msgtype::error, str_fmt("LightHook EnableHook 开启Hook失败，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%d]", item.second.second.describe().empty() ? "无" : item.second.second.describe().c_str(), __FILE__, __FUNCTION__, __LINE__));
             }
         }
     }
@@ -465,8 +471,7 @@ auto HookManager::disableAllHook() -> void {
     for(auto& item : hookInfoHash) {
         if(item.second.first.Enabled) {
             if(!DisableHook(&item.second.first)) {
-                // TODO:
-                //spdlog::warn("DisableHook 关闭Hook失败({}) - fromFunction {} - in {}", (const void*)item.first, __FUNCTION__, __LINE__);
+                on(msgtype::error, str_fmt("LightHook DisableHook 关闭Hook失败，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%d]", item.second.second.describe().empty() ? "无" : item.second.second.describe().c_str(), __FILE__, __FUNCTION__, __LINE__));
             }
         }
     }
@@ -579,7 +584,7 @@ bool HookInstance::unhook() {
 static std::string str_fmt(const char* fmt, ...) {
     va_list arg;
     va_start(arg, fmt);
-    char str[5500];
+    char str[500];
     vsprintf_s(str, sizeof(str) - 1, fmt, arg);
     va_end(arg);
     return str;
