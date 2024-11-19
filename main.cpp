@@ -1,16 +1,15 @@
 ﻿// 定义应用程序的入口点。
 //
 //#define USE_LIGHTHOOK
-
-
-#define USE_DETOURS
+#define USE_MINHOOK
+//#define USE_DETOURS
 #define EXTERNAL_INCLUDE_HOOKHEADER
 
 #ifdef EXTERNAL_INCLUDE_HOOKHEADER
-//#include <MinHook.h>
+#include <MinHook.h>
 //#include "LightHook/Source/LightHook.h"
-#include <Windows.h>
-#include "detours/detours.h"
+//#include <Windows.h>
+//#include "detours/detours.h"
 #endif // EXTERNAL_INCLUDE_HOOKHEADER
 
 

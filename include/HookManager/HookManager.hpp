@@ -210,12 +210,17 @@ auto HookManager::addHook(uintptr_t ptr, void* fun, std::string hook_describe) -
 
 #ifdef USE_MINHOOK
         hookInfoHash[ptr] = { ptr, hook_describe.empty() ? HookInstance(ptr) : HookInstance(ptr, hook_describe) };
-        MH_CreateHook((LPVOID)ptr, (LPVOID)fun, reinterpret_cast<LPVOID*>(&hookInfoHash[ptr].second.origin));
-#endif // USE_LIGHTHOOK
+        MH_STATUS status = MH_CreateHook((LPVOID)ptr, (LPVOID)fun, reinterpret_cast<LPVOID*>(&hookInfoHash[ptr].second.origin));
+        if(status != MH_OK) {
+            on(msgtype::error, str_fmt("MH_CreateHook 返回标识失败:[%s]，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%s],",MH_StatusToString(status), hook_describe.empty() ? "无" : hook_describe.c_str(), __FILE__, __FUNCTION__, __LINE__));
+            return nullptr;
+        }
+
+#endif // USE_MINHOOK
 
 #ifdef USE_DETOURS
         hookInfoHash[ptr] = { (uintptr_t)fun, hook_describe.empty() ? HookInstance(ptr) : HookInstance(ptr, hook_describe) };
-#endif // USE_LIGHTHOOK
+#endif // USE_DETOURS
         return &hookInfoHash[ptr].second;
     }
 }
@@ -228,15 +233,19 @@ auto HookManager::enableHook(HookInstance& instance) -> bool {
     return ret;
 #endif // USE_LIGHTHOOK
 #ifdef USE_MINHOOK
-    MH_STATUS ret = MH_EnableHook((LPVOID)instance.ptr());
-    return ret == MH_OK;
+    MH_STATUS status = MH_EnableHook((LPVOID)instance.ptr());
+    if(status != MH_OK) {
+        on(msgtype::error, str_fmt("MH_EnableHook 返回标识失败:[%s]，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%s],", MH_StatusToString(status), instance.describe().empty() ? "无" : instance.describe().c_str(), __FILE__, __FUNCTION__, __LINE__));
+        return false;
+    }
+    return true;
 #endif // USE_MINHOOK
 
 #ifdef USE_DETOURS
     LONG d_t_b_msg = DetourTransactionBegin();
     if(d_t_b_msg != NO_ERROR) {
         if(d_t_b_msg == ERROR_INVALID_OPERATION) {
-            on(msgtype::error, str_fmt("Detour一个挂起的事务已经存在，事务还未提交就是重复执行了，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],",instance.describe().empty()? "无" : instance.describe(), "DetourTransactionBegin", __FILE__, __FUNCTION__, __LINE__));
+            on(msgtype::error, str_fmt("Detour一个挂起的事务已经存在，事务还未提交就是重复执行了，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],",instance.describe().empty()? "无" : instance.describe().c_str(), "DetourTransactionBegin", __FILE__, __FUNCTION__, __LINE__));
         }
         DetourTransactionAbort();
         return false;
@@ -245,7 +254,7 @@ auto HookManager::enableHook(HookInstance& instance) -> bool {
     LONG d_u_t_msg = DetourUpdateThread(GetCurrentThread());
     if(d_u_t_msg != NO_ERROR) {
         if(d_u_t_msg == ERROR_NOT_ENOUGH_MEMORY) {
-            on(msgtype::error, str_fmt("Detour没有足够的内存来记录线程的标识，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", instance.describe().empty() ? "无" : instance.describe(), "DetourTransactionBegin", "DetourUpdateThread", __FILE__, __FUNCTION__, __LINE__));
+            on(msgtype::error, str_fmt("Detour没有足够的内存来记录线程的标识，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", instance.describe().empty() ? "无" : instance.describe().c_str(), "DetourUpdateThread", __FILE__, __FUNCTION__, __LINE__));
         }
         DetourTransactionAbort();
         return false;
@@ -254,16 +263,16 @@ auto HookManager::enableHook(HookInstance& instance) -> bool {
     LONG d_a_ex = DetourAttachEx((PVOID*)&instance.ptr(), (PVOID)hookInfoHash[instance.mapindex()].first, (PDETOUR_TRAMPOLINE*)&instance.origin, 0, 0);
     if(d_a_ex != NO_ERROR) {
         if(d_a_ex == ERROR_INVALID_BLOCK) {
-            on(msgtype::error, str_fmt("Detour被引用的函数太小，不能Hook，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", instance.describe().empty() ? "无" : instance.describe(), "DetourTransactionBegin","DetourAttachEx", __FILE__, __FUNCTION__, __LINE__));
+            on(msgtype::error, str_fmt("Detour被引用的函数太小，不能Hook，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", instance.describe().empty() ? "无" : instance.describe().c_str(),"DetourAttachEx", __FILE__, __FUNCTION__, __LINE__));
         }
         else if(d_a_ex == ERROR_INVALID_HANDLE) {
-            on(msgtype::error, str_fmt("Detour 此Hook的目标地址为NULL或指向NULL指针，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", instance.describe().empty() ? "无" : instance.describe(), "DetourTransactionBegin","DetourAttachEx", __FILE__, __FUNCTION__, __LINE__));
+            on(msgtype::error, str_fmt("Detour 此Hook的目标地址为NULL或指向NULL指针，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", instance.describe().empty() ? "无" : instance.describe().c_str(),"DetourAttachEx", __FILE__, __FUNCTION__, __LINE__));
         }
         else if(d_a_ex == ERROR_INVALID_OPERATION) {
-            on(msgtype::error, str_fmt("Detour不存在挂起的事务，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", "DetourAttachEx", instance.describe().empty() ? "无" : instance.describe(), "DetourTransactionBegin", __FILE__, __FUNCTION__, __LINE__));
+            on(msgtype::error, str_fmt("Detour不存在挂起的事务，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", "DetourAttachEx", instance.describe().empty() ? "无" : instance.describe().c_str(), "DetourAttachEx", __FILE__, __FUNCTION__, __LINE__));
         }
         else if(d_a_ex == ERROR_NOT_ENOUGH_MEMORY) {
-            on(msgtype::error, str_fmt("Detour没有足够的内存来记录线程的标识，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", instance.describe().empty() ? "无" : instance.describe(), "DetourTransactionBegin", "DetourAttachEx", __FILE__, __FUNCTION__, __LINE__));
+            on(msgtype::error, str_fmt("Detour没有足够的内存来记录线程的标识，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", instance.describe().empty() ? "无" : instance.describe().c_str(), "DetourAttachEx", __FILE__, __FUNCTION__, __LINE__));
         }
         DetourTransactionAbort();
         return false;
@@ -272,13 +281,13 @@ auto HookManager::enableHook(HookInstance& instance) -> bool {
     LONG d_t_c_msg = DetourTransactionCommit();
     if(d_t_c_msg != NO_ERROR) {
         if(d_t_c_msg == ERROR_INVALID_DATA) {
-            on(msgtype::error, str_fmt("Detour目标函数在事务的各个步骤之间被第三方更改，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", instance.describe().empty() ? "无" : instance.describe(),"DetourTransactionCommit", __FILE__, __FUNCTION__, __LINE__));
+            on(msgtype::error, str_fmt("Detour目标函数在事务的各个步骤之间被第三方更改，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", instance.describe().empty() ? "无" : instance.describe().c_str(),"DetourTransactionCommit", __FILE__, __FUNCTION__, __LINE__));
         }
         else if(d_t_c_msg == ERROR_INVALID_OPERATION) {
-            on(msgtype::error, str_fmt("Detour不存在挂起的事务，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],","DetourTransactionCommit", instance.describe().empty() ? "无" : instance.describe(), __FILE__, __FUNCTION__, __LINE__));
+            on(msgtype::error, str_fmt("Detour不存在挂起的事务，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],",instance.describe().empty() ? "无" : instance.describe().c_str(), "DetourTransactionCommit", __FILE__, __FUNCTION__, __LINE__));
         }
         else {
-            on(msgtype::error, str_fmt("Detour DetourTransactionCommit返回未知错误:[%ld]，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%s],", d_t_c_msg, instance.describe().empty() ? "无" : instance.describe(), __FILE__, __FUNCTION__, __LINE__));
+            on(msgtype::error, str_fmt("Detour DetourTransactionCommit返回未知错误:[%ld]，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", d_t_c_msg, instance.describe().empty() ? "无" : instance.describe().c_str(), "DetourTransactionCommit", __FILE__, __FUNCTION__, __LINE__));
         }
         DetourTransactionAbort();
         return false;
@@ -295,15 +304,19 @@ auto HookManager::disableHook(HookInstance& instance) -> bool {
     return DisableHook(&hookInfoHash[instance.mapindex()].first);
 #endif // USE_LIGHTHOOK
 #ifdef USE_MINHOOK
-    MH_STATUS ret = MH_DisableHook((LPVOID)instance.ptr());
-    return ret == MH_OK;
+    MH_STATUS status = MH_DisableHook((LPVOID)instance.ptr());
+    if(status != MH_OK) {
+        on(msgtype::error, str_fmt("MH_DisableHook 返回标识失败:[%s]，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%s],", MH_StatusToString(status), instance.describe().empty() ? "无" : instance.describe().c_str(), __FILE__, __FUNCTION__, __LINE__));
+        return false;
+    }
+    return true;
 #endif // USE_MINHOOK
 
 #ifdef USE_DETOURS
     LONG d_t_b_msg = DetourTransactionBegin();
     if(d_t_b_msg != NO_ERROR) {
         if(d_t_b_msg == ERROR_INVALID_OPERATION) {
-            on(msgtype::error, str_fmt("Detour一个挂起的事务已经存在，事务还未提交就是重复执行了，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", instance.describe().empty() ? "无" : instance.describe(),"DetourTransactionBegin", __FILE__, __FUNCTION__, __LINE__));
+            on(msgtype::error, str_fmt("Detour一个挂起的事务已经存在，事务还未提交就是重复执行了，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", instance.describe().empty() ? "无" : instance.describe().c_str(),"DetourTransactionBegin", __FILE__, __FUNCTION__, __LINE__));
         }
         DetourTransactionAbort();
         return false;
@@ -312,7 +325,7 @@ auto HookManager::disableHook(HookInstance& instance) -> bool {
     LONG d_u_t_msg = DetourUpdateThread(GetCurrentThread());
     if(d_u_t_msg != NO_ERROR) {
         if(d_u_t_msg == ERROR_NOT_ENOUGH_MEMORY) {
-            on(msgtype::error, str_fmt("Detour没有足够的内存来记录线程的标识，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", instance.describe().empty() ? "无" : instance.describe(), "DetourUpdateThread", __FILE__, __FUNCTION__, __LINE__));
+            on(msgtype::error, str_fmt("Detour没有足够的内存来记录线程的标识，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", instance.describe().empty() ? "无" : instance.describe().c_str(), "DetourUpdateThread", __FILE__, __FUNCTION__, __LINE__));
         }
         DetourTransactionAbort();
         return false;
@@ -321,16 +334,16 @@ auto HookManager::disableHook(HookInstance& instance) -> bool {
     LONG d_d_msg = DetourDetach((PVOID*)&instance.ptr(), (PVOID)hookInfoHash[instance.mapindex()].first);
     if(d_d_msg != NO_ERROR) {
         if(d_d_msg == ERROR_INVALID_BLOCK) {
-            on(msgtype::error, str_fmt("Detour被引用的函数太小，不能Hook，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", instance.describe().empty() ? "无" : instance.describe(),"DetourDetach", __FILE__, __FUNCTION__, __LINE__));
+            on(msgtype::error, str_fmt("Detour被引用的函数太小，不能Hook，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", instance.describe().empty() ? "无" : instance.describe().c_str(),"DetourDetach", __FILE__, __FUNCTION__, __LINE__));
         }
         else if(d_d_msg == ERROR_INVALID_HANDLE) {
-            on(msgtype::error, str_fmt("Detour 此Hook的目标地址为NULL或指向NULL指针，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", instance.describe().empty() ? "无" : instance.describe(), "DetourDetach", __FILE__, __FUNCTION__, __LINE__));
+            on(msgtype::error, str_fmt("Detour 此Hook的目标地址为NULL或指向NULL指针，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", instance.describe().empty() ? "无" : instance.describe().c_str(), "DetourDetach", __FILE__, __FUNCTION__, __LINE__));
         }
         else if(d_d_msg == ERROR_INVALID_OPERATION) {
-            on(msgtype::error, str_fmt("Detour不存在挂起的事务，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", instance.describe().empty() ? "无" : instance.describe(), "DetourDetach", __FILE__, __FUNCTION__, __LINE__));
+            on(msgtype::error, str_fmt("Detour不存在挂起的事务，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", instance.describe().empty() ? "无" : instance.describe().c_str(), "DetourDetach", __FILE__, __FUNCTION__, __LINE__));
         }
         else if(d_d_msg == ERROR_NOT_ENOUGH_MEMORY) {
-            on(msgtype::error, str_fmt("Detour没有足够的内存来记录线程的标识，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", instance.describe().empty() ? "无" : instance.describe(), "DetourDetach", __FILE__, __FUNCTION__, __LINE__));
+            on(msgtype::error, str_fmt("Detour没有足够的内存来记录线程的标识，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", instance.describe().empty() ? "无" : instance.describe().c_str(), "DetourDetach", __FILE__, __FUNCTION__, __LINE__));
         }
         DetourTransactionAbort();
         return false;
@@ -339,13 +352,13 @@ auto HookManager::disableHook(HookInstance& instance) -> bool {
     LONG d_t_c_msg = DetourTransactionCommit();
     if(d_t_c_msg != NO_ERROR) {
         if(d_t_c_msg == ERROR_INVALID_DATA) {
-            on(msgtype::error, str_fmt("Detour目标函数在事务的各个步骤之间被第三方更改，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", instance.describe().empty() ? "无" : instance.describe(),"DetourTransactionCommit", __FILE__, __FUNCTION__, __LINE__));
+            on(msgtype::error, str_fmt("Detour目标函数在事务的各个步骤之间被第三方更改，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", instance.describe().empty() ? "无" : instance.describe().c_str(),"DetourTransactionCommit", __FILE__, __FUNCTION__, __LINE__));
         }
         else if(d_t_c_msg == ERROR_INVALID_OPERATION) {
-            on(msgtype::error, str_fmt("Detour不存在挂起的事务，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],","DetourTransactionCommit", instance.describe().empty() ? "无" : instance.describe(), __FILE__, __FUNCTION__, __LINE__));
+            on(msgtype::error, str_fmt("Detour不存在挂起的事务，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", instance.describe().empty() ? "无" : instance.describe().c_str(),"DetourTransactionCommit", __FILE__, __FUNCTION__, __LINE__));
         }
         else {
-            on(msgtype::error, str_fmt("Detour DetourTransactionCommit返回未知错误:[%ld]，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%s],", d_t_c_msg, instance.describe().empty() ? "无" : instance.describe(), __FILE__, __FUNCTION__, __LINE__));
+            on(msgtype::error, str_fmt("Detour DetourTransactionCommit返回未知错误:[%ld]，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", d_t_c_msg, instance.describe().empty() ? "无" : instance.describe().c_str(), "DetourTransactionCommit", __FILE__, __FUNCTION__, __LINE__));
         }
         DetourTransactionAbort();
         return false;
@@ -370,9 +383,9 @@ auto HookManager::enableAllHook() -> void {
 
 #ifdef USE_MINHOOK
     for(auto& item : hookInfoHash) {
-        if(MH_EnableHook((LPVOID)item.second.first) != MH_OK) {
-            // TODO:
-            //spdlog::warn("MH_EnableHook 开启Hook失败({}) - fromFunction {} - in {}", (const void*)item.first, __FUNCTION__, __LINE__);
+        MH_STATUS status = MH_EnableHook((LPVOID)item.second.first);
+        if(status != MH_OK) {
+            on(msgtype::error, str_fmt("MH_EnableHook 返回标识失败:[%s]，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%s],", MH_StatusToString(status), item.second.second.describe().empty() ? "无" : item.second.second.describe().c_str(), __FILE__, __FUNCTION__, __LINE__));
         }
     }
 #endif // USE_MINHOOK
@@ -401,19 +414,19 @@ auto HookManager::enableAllHook() -> void {
         LONG d_a_ex = DetourAttachEx((PVOID*)&item.second.second.ptr(), (PVOID)item.second.first, (PDETOUR_TRAMPOLINE*)&item.second.second.origin, 0, 0);
         if(d_a_ex != NO_ERROR) {
             if(d_a_ex == ERROR_INVALID_BLOCK) {
-                on(msgtype::error, str_fmt("Detour被引用的函数太小，不能Hook，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", item.second.second.describe().empty() ? "无" : item.second.second.describe(), "DetourAttachEx", __FILE__, __FUNCTION__, __LINE__));
+                on(msgtype::error, str_fmt("Detour被引用的函数太小，不能Hook，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", item.second.second.describe().empty() ? "无" : item.second.second.describe().c_str(), "DetourAttachEx", __FILE__, __FUNCTION__, __LINE__));
             }
             else if(d_a_ex == ERROR_INVALID_HANDLE) {
-                on(msgtype::error, str_fmt("Detour 此Hook的目标地址为NULL或指向NULL指针，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", item.second.second.describe().empty() ? "无" : item.second.second.describe(), "DetourAttachEx", __FILE__, __FUNCTION__, __LINE__));
+                on(msgtype::error, str_fmt("Detour 此Hook的目标地址为NULL或指向NULL指针，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", item.second.second.describe().empty() ? "无" : item.second.second.describe().c_str(), "DetourAttachEx", __FILE__, __FUNCTION__, __LINE__));
             }
             else if(d_a_ex == ERROR_INVALID_OPERATION) {
-                on(msgtype::error, str_fmt("Detour不存在挂起的事务，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", "DetourAttachEx", item.second.second.describe().empty() ? "无" : item.second.second.describe(), __FILE__, __FUNCTION__, __LINE__));
+                on(msgtype::error, str_fmt("Detour不存在挂起的事务，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", item.second.second.describe().empty() ? "无" : item.second.second.describe().c_str(), "DetourAttachEx", __FILE__, __FUNCTION__, __LINE__));
             }
             else if(d_a_ex == ERROR_NOT_ENOUGH_MEMORY) {
-                on(msgtype::error, str_fmt("Detour没有足够的内存来记录线程的标识，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", item.second.second.describe().empty() ? "无" : item.second.second.describe(), "DetourAttachEx", __FILE__, __FUNCTION__, __LINE__));
+                on(msgtype::error, str_fmt("Detour没有足够的内存来记录线程的标识，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", item.second.second.describe().empty() ? "无" : item.second.second.describe().c_str(), "DetourAttachEx", __FILE__, __FUNCTION__, __LINE__));
             }
             else {
-                on(msgtype::error, str_fmt("Detour DetourAttachEx返回未知错误:[%ld]，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", d_a_ex, item.second.second.describe().empty() ? "无" : item.second.second.describe(), "DetourAttachEx", __FILE__, __FUNCTION__, __LINE__));
+                on(msgtype::error, str_fmt("Detour DetourAttachEx返回未知错误:[%ld]，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", d_a_ex, item.second.second.describe().empty() ? "无" : item.second.second.describe().c_str(), "DetourAttachEx", __FILE__, __FUNCTION__, __LINE__));
             }
         }
     }
@@ -426,7 +439,7 @@ auto HookManager::enableAllHook() -> void {
             on(msgtype::error, str_fmt("Detour不存在挂起的事务，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", "DetourTransactionCommit", __FILE__, __FUNCTION__, __LINE__));
         }
         else {
-            on(msgtype::error, str_fmt("Detour DetourTransactionCommit返回未知错误:[%ld],文件:[%s] 函数: [%s] 行:[%s],", d_t_c_msg, __FILE__, __FUNCTION__, __LINE__));
+            on(msgtype::error, str_fmt("Detour DetourTransactionCommit返回未知错误:[%ld]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", d_t_c_msg, "DetourTransactionCommit", __FILE__, __FUNCTION__, __LINE__));
         }
         DetourTransactionAbort();
         return;
@@ -480,19 +493,19 @@ auto HookManager::disableAllHook() -> void {
         LONG d_d_msg = DetourDetach((PVOID*)&item.second.second.ptr(), (PVOID)item.second.first);
         if(d_d_msg != NO_ERROR) {
             if(d_d_msg == ERROR_INVALID_BLOCK) {
-                on(msgtype::error, str_fmt("Detour被引用的函数太小，不能Hook，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],","DetourDetach", __FILE__, __FUNCTION__, __LINE__));
+                on(msgtype::error, str_fmt("Detour被引用的函数太小，不能Hook，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", item.second.second.describe().empty() ? "无" : item.second.second.describe().c_str(),"DetourDetach", __FILE__, __FUNCTION__, __LINE__));
             }
             else if(d_d_msg == ERROR_INVALID_HANDLE) {
-                on(msgtype::error, str_fmt("Detour 此Hook的目标地址为NULL或指向NULL指针，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", "DetourDetach", __FILE__, __FUNCTION__, __LINE__));
+                on(msgtype::error, str_fmt("Detour 此Hook的目标地址为NULL或指向NULL指针，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", item.second.second.describe().empty() ? "无" : item.second.second.describe().c_str(), "DetourDetach", __FILE__, __FUNCTION__, __LINE__));
             }
             else if(d_d_msg == ERROR_INVALID_OPERATION) {
-                on(msgtype::error, str_fmt("Detour不存在挂起的事务，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", "DetourDetach", __FILE__, __FUNCTION__, __LINE__));
+                on(msgtype::error, str_fmt("Detour不存在挂起的事务，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", item.second.second.describe().empty() ? "无" : item.second.second.describe().c_str(), "DetourDetach", __FILE__, __FUNCTION__, __LINE__));
             }
             else if(d_d_msg == ERROR_NOT_ENOUGH_MEMORY) {
-                on(msgtype::error, str_fmt("Detour没有足够的内存来记录线程的标识，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", "DetourDetach", __FILE__, __FUNCTION__, __LINE__));
+                on(msgtype::error, str_fmt("Detour没有足够的内存来记录线程的标识，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", item.second.second.describe().empty() ? "无" : item.second.second.describe().c_str(), "DetourDetach", __FILE__, __FUNCTION__, __LINE__));
             }
             else {
-                on(msgtype::error, str_fmt("Detour DetourDetach返回未知错误:[%ld]，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", d_d_msg, item.second.second.describe().empty() ? "无" : item.second.second.describe(), "DetourDetach", __FILE__, __FUNCTION__, __LINE__));
+                on(msgtype::error, str_fmt("Detour DetourDetach返回未知错误:[%ld]，目标Hook描述信息:[%s]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", d_d_msg, item.second.second.describe().empty() ? "无" : item.second.second.describe().c_str(), "DetourDetach", __FILE__, __FUNCTION__, __LINE__));
             }
         }
     }
@@ -505,7 +518,7 @@ auto HookManager::disableAllHook() -> void {
             on(msgtype::error, str_fmt("Detour不存在挂起的事务，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],","DetourTransactionCommit", __FILE__, __FUNCTION__, __LINE__));
         }
         else {
-            on(msgtype::error, str_fmt("Detour DetourTransactionCommit返回未知错误:[%ld],文件:[%s] 函数: [%s] 行:[%s],", d_t_c_msg, __FILE__, __FUNCTION__, __LINE__));
+            on(msgtype::error, str_fmt("Detour DetourTransactionCommit返回未知错误:[%ld]，流程:[%s],文件:[%s] 函数: [%s] 行:[%s],", d_t_c_msg, "DetourTransactionCommit", __FILE__, __FUNCTION__, __LINE__));
         }
         DetourTransactionAbort();
         return;
