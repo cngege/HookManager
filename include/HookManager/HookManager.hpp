@@ -57,6 +57,11 @@ public:
     std::string describe() const;
     bool hook();
     bool unhook();
+
+    template<typename T>
+    T oriFormSign(T sign) {
+        return static_cast<T>(origin);
+    }
 };
 
 class HookManager

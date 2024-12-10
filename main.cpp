@@ -25,8 +25,8 @@ static __declspec(noinline) int add(int a, int b) {
 }
 
 static __declspec(noinline) int hookadd(int a, int b) {
-	using fn = int(__fastcall*)(int, int);
-	return ((fn)h->origin)(a, b) * 10;
+	//using fn = int(__fastcall*)(int, int);
+	return h->oriFormSign(add)(a,b) * 10;
 }
 
 int main()
