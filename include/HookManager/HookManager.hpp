@@ -59,7 +59,7 @@ public:
     bool unhook();
 
     template<typename T>
-    T oriFormSign(T sign) {
+    T oriForSign(T sign) {
         return static_cast<T>(origin);
     }
 };

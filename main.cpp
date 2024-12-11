@@ -26,7 +26,7 @@ static __declspec(noinline) int add(int a, int b) {
 
 static __declspec(noinline) int hookadd(int a, int b) {
 	//using fn = int(__fastcall*)(int, int);
-	return h->oriFormSign(add)(a,b) * 10;
+	return h->oriForSign(add)(a,b) * 10;
 }
 
 int main()
@@ -65,6 +65,6 @@ int main()
 
 	// 试图重复添加Hook - 将会产生一个debug消息
 	auto* _ = HookManager::getInstance()->addHook((uintptr_t)&add, &hookadd);
-
+	
 	return 0;
 }
