@@ -12,17 +12,19 @@
 #ifdef USE_LIGHTHOOK
 #ifndef EXTERNAL_INCLUDE_HOOKHEADER
 #include <Windows.h>
-#include "LightHook/LightHook.h"
+#include <LightHook/LightHook.h>
 #endif // EXTERNAL_INCLUDE_HOOKHEADER
 
 #elif defined USE_DETOURS
 #ifndef EXTERNAL_INCLUDE_HOOKHEADER
-#include "detours/detours.h"
+#include <windows.h>
+#include <detours.h>
+//#include "detours/detours.h"
 #endif // EXTERNAL_INCLUDE_HOOKHEADER
 
 #elif defined USE_MINHOOK
 #ifndef EXTERNAL_INCLUDE_HOOKHEADER
-#include "minhook/MinHook.h"
+#include <MinHook.h>
 #endif // EXTERNAL_INCLUDE_HOOKHEADER
 
 #else 

@@ -1,4 +1,4 @@
-<div align=center>
+﻿<div align=center>
   <img src="https://capsule-render.vercel.app/api?type=Waving&color=timeGradient&height=200&animation=fadeIn&section=header&text=HookManager&fontSize=60" />
 </div>
 
@@ -21,8 +21,13 @@
 
  ### HookManager + MinHook
  - 在引用 `HookManager.hpp` 前定义宏:`USE_MinHOOK`
- - 将 `MinHook.h` 文件放到 minhook 文件夹中， minHook文件夹放到可直接引用的目录，如：include
+ - 安装 `MinHook.h` 或将 `MinHook.h` 文件放到可直接引用的目录，如：include
  - 或者 在引用HookManager 头文件前定义 宏:`EXTERNAL_INCLUDE_HOOKHEADER` 然后手动引用minhook头文件
+
+ ### HookManager + Detours
+ - 在引用 `HookManager.hpp` 前定义宏:`USE_DETOURS`
+ - 将 `Detours.h` 文件放到可直接引用的目录，如：include
+ - 或者 在引用HookManager 头文件前定义 宏:`EXTERNAL_INCLUDE_HOOKHEADER` 然后手动引用Detours头文件
 
  ## TODO
  - [ ] 支持多次hook, hook后函数存储到数组,触发调用时遍历执行.
