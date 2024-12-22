@@ -12,7 +12,7 @@
 #ifdef USE_LIGHTHOOK
 #ifndef EXTERNAL_INCLUDE_HOOKHEADER
 #include <Windows.h>
-#include <LightHook/LightHook.h>
+#include <lighthook/LightHook.h>
 #endif // EXTERNAL_INCLUDE_HOOKHEADER
 
 #elif defined USE_DETOURS
