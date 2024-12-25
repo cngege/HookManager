@@ -165,20 +165,20 @@ static std::string str_fmt(const char* fmt, ...);
 ////////////////////////////////////////////////
 
 
-HookManager* HookManager::getInstance() {
+inline HookManager* HookManager::getInstance() {
     static HookManager hookManager{};
     return &hookManager;
 }
 
-HookManager::HookManager() {
+inline HookManager::HookManager() {
     init();
 }
 
-HookManager::~HookManager() {
+inline HookManager::~HookManager() {
     uninit();
 }
 
-auto HookManager::init()->void {
+inline auto HookManager::init()->void {
 #ifdef USE_MINHOOK
     MH_STATUS status = MH_Initialize();
     if(status != MH_OK) {
@@ -186,7 +186,7 @@ auto HookManager::init()->void {
     }
 #endif // USE_MINHOOK
 }
-auto HookManager::uninit() -> void {
+inline auto HookManager::uninit() -> void {
 #ifdef USE_MINHOOK
     MH_STATUS remove_status = MH_RemoveHook(MH_ALL_HOOKS);
     if(remove_status != MH_OK) {
@@ -202,12 +202,12 @@ auto HookManager::uninit() -> void {
 }
 
 
-auto HookManager::addHook(uintptr_t ptr, void* fun) -> HookInstance* {
+inline auto HookManager::addHook(uintptr_t ptr, void* fun) -> HookInstance* {
     return addHook(ptr, fun, std::string());
 }
 
 
-auto HookManager::addHook(uintptr_t ptr, void* fun, std::string hook_describe) -> HookInstance* {
+inline auto HookManager::addHook(uintptr_t ptr, void* fun, std::string hook_describe) -> HookInstance* {
     std::shared_lock<std::shared_mutex> guard(map_lock_mutex);
     auto it = hookInfoHash.find(ptr);
     if(it != hookInfoHash.end()) {
@@ -243,7 +243,7 @@ auto HookManager::addHook(uintptr_t ptr, void* fun, std::string hook_describe) -
     }
 }
 
-auto HookManager::enableHook(HookInstance& instance) -> bool {
+inline auto HookManager::enableHook(HookInstance& instance) -> bool {
     std::shared_lock<std::shared_mutex> guard(map_lock_mutex);
 #ifdef USE_LIGHTHOOK
     int ret = EnableHook(&hookInfoHash[instance.mapindex()].first);
@@ -318,7 +318,7 @@ auto HookManager::enableHook(HookInstance& instance) -> bool {
     
 }
 
-auto HookManager::disableHook(HookInstance& instance) -> bool {
+inline auto HookManager::disableHook(HookInstance& instance) -> bool {
     std::shared_lock<std::shared_mutex> guard(map_lock_mutex);
 
 #ifdef USE_LIGHTHOOK
@@ -392,7 +392,7 @@ auto HookManager::disableHook(HookInstance& instance) -> bool {
 #endif // USE_MINHOOK
 }
 
-auto HookManager::enableAllHook() -> void {
+inline auto HookManager::enableAllHook() -> void {
     std::shared_lock<std::shared_mutex> guard(map_lock_mutex);
 
 #ifdef USE_LIGHTHOOK
@@ -471,7 +471,7 @@ auto HookManager::enableAllHook() -> void {
 #endif // USE_DETOURS
 }
 
-auto HookManager::disableAllHook() -> void {
+inline auto HookManager::disableAllHook() -> void {
     std::shared_lock<std::shared_mutex> guard(map_lock_mutex);
 
 #ifdef USE_LIGHTHOOK
@@ -549,7 +549,7 @@ auto HookManager::disableAllHook() -> void {
 #endif // USE_DETOURS
 }
 
-auto HookManager::findHookInstance(uintptr_t indexptr) -> HookInstance* {
+inline auto HookManager::findHookInstance(uintptr_t indexptr) -> HookInstance* {
     std::shared_lock<std::shared_mutex> guard(map_lock_mutex);
     auto it = hookInfoHash.find(indexptr);
     if(it != hookInfoHash.end()) {
@@ -558,37 +558,37 @@ auto HookManager::findHookInstance(uintptr_t indexptr) -> HookInstance* {
     return nullptr;
 }
 
-auto HookManager::on(MessageEvent ev) -> void {
+inline auto HookManager::on(MessageEvent ev) -> void {
     event = ev;
 }
 
-auto HookManager::on(msgtype type, std::string msg) -> void {
+inline auto HookManager::on(msgtype type, std::string msg) -> void {
     if(event) event(type, msg);
 }
 
-uintptr_t& HookInstance::ptr() {
+inline uintptr_t& HookInstance::ptr() {
     return m_ptr;
 }
 
-uintptr_t HookInstance::ptr() const {
+inline uintptr_t HookInstance::ptr() const {
     return m_ptr;
 }
 
-std::string HookInstance::describe() const {
+inline std::string HookInstance::describe() const {
     return m_describe;
 }
 
-bool HookInstance::hook() {
+inline bool HookInstance::hook() {
     return HookManager::getInstance()->enableHook(*this);
 }
 
-bool HookInstance::unhook() {
+inline bool HookInstance::unhook() {
     return HookManager::getInstance()->disableHook(*this);
 }
 
 ///////////////////////////
 
-static std::string str_fmt(const char* fmt, ...) {
+inline static std::string str_fmt(const char* fmt, ...) {
     va_list arg;
     va_start(arg, fmt);
     char str[500];
