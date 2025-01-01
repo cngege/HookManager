@@ -35,28 +35,47 @@
 #error You Need Define One Hooklib, USE_LIGHTHOOK OR USE_MINHOOK OR USE_DETOURS
 #endif
 
+#if (defined __amd64__) || (defined __amd64) || (defined __x86_64__) || (defined __x86_64) || (defined _M_AMD64)
+#define _HM_IS_X64
+#else
+#define _HM_IS_X86
+#endif // _X64_
 
 #include <unordered_map>
 #include <mutex>
 #include <shared_mutex>
 #include <string>
+#include <vector>
 #include <functional>
 
 class HookInstance {
 private:
     uintptr_t m_ptr = 0;
+    void* m_fun = nullptr;
+
+    /**
+     * @brief hash表的key
+     */
     uintptr_t m_mapindex = 0;
+    /**
+     * @brief 单例的描述
+     */
     std::string m_describe{};
+
 public:
     void* origin = nullptr;
+    size_t arrayIndex = -1;
+    bool enable = false;
 public:
     HookInstance(){};
-    HookInstance(uintptr_t ptr) : m_ptr(ptr), m_mapindex(ptr) {};
-    HookInstance(uintptr_t ptr, std::string describe) : m_ptr(ptr), m_mapindex(ptr), m_describe(describe){};
+    HookInstance(uintptr_t ptr, void* fun) : m_ptr(ptr), m_fun(fun), m_mapindex(ptr) {};
+    HookInstance(uintptr_t ptr, void* fun, std::string describe) : m_ptr(ptr), m_fun(fun), m_mapindex(ptr), m_describe(describe){};
     uintptr_t& ptr();
     uintptr_t ptr() const;
+    void* fun();
     uintptr_t mapindex() const { return m_mapindex; };
     std::string describe() const;
+    bool isEnable() const { return enable; };
     bool hook();
     bool unhook();
 
@@ -66,22 +85,37 @@ public:
     }
 };
 
+struct HookTarget {
+    std::vector<HookInstance> Instances;
+    uintptr_t HookPtr;
+    //uintptr_t JmpPtr;
+    uintptr_t FreePtr;
+    void* Origin = nullptr;
+#ifdef USE_LIGHTHOOK
+    HookInformation HookInfo;
+#endif // USE_MINHOOK
+    void setJmpFun(void* fun) {
+        uintptr_t* jmp_addr = reinterpret_cast<uintptr_t*>(getJmpAddress());
+#ifdef _HM_IS_X64
+        *jmp_addr = (uintptr_t)fun;
+#else
+        *jmp_addr = (uintptr_t)(fun)-(getJmpAddress() + 4);
+#endif
+    }
+    uintptr_t getJmpAddress() const {
+#ifdef _HM_IS_X64
+        return FreePtr + 6;
+#else
+        return FreePtr + 1;
+#endif
+    }
+};
+
 class HookManager
 {
 private:
     std::shared_mutex map_lock_mutex;
-#ifdef USE_LIGHTHOOK
-    std::unordered_map<uintptr_t, std::pair<HookInformation, HookInstance>> hookInfoHash{};
-#endif
-
-#ifdef USE_MINHOOK
-    std::unordered_map<uintptr_t, std::pair<uintptr_t, HookInstance>> hookInfoHash{};
-#endif // USE_MINHOOK
-
-#ifdef USE_DETOURS
-    std::unordered_map<uintptr_t, std::pair<uintptr_t, HookInstance>> hookInfoHash{};
-#endif // USE_MINHOOK
-
+    std::unordered_map<uintptr_t, HookTarget> hookInfoHash{};
 public:
     enum msgtype
     {
@@ -129,11 +163,11 @@ public:
      */
     auto disableAllHook() -> void;
     /**
-     * @brief 通过hook的目标函数地址找到对应的hook单例(这个函数后续可能有冲突,暂且保留)
+     * @brief 通过hook的目标函数地址找到对应hook的所有单例(这个函数后续可能有冲突,暂且保留)
      * @param  hook的目标函数地址
      * @return 返回找到的hook单例
      */
-    auto findHookInstance(uintptr_t) -> HookInstance*;
+    auto findHookInstance(uintptr_t) -> std::vector<HookInstance>;
 
     // Evenet
     using MessageEvent = std::function<void(msgtype type, std::string msg)>;
@@ -213,38 +247,110 @@ inline auto HookManager::addHook(uintptr_t ptr, void* fun, std::string hook_desc
     if(it != hookInfoHash.end()) {
         // TODO:
         //spdlog::warn("addHook 新增Hook失败,当前函数已被hook({}) - fromFunction {} - in {}", (const void*)ptr, __FUNCTION__, __LINE__);
-        if((*it).second.second.describe().empty()) {
-            on(msgtype::debug, str_fmt("暂不支持重复Hook, addHook 新增Hook失败, hook指针:[%p]", ptr));
-        }
-        else {
-            on(msgtype::debug, str_fmt("暂不支持重复Hook, addHook 新增Hook失败, hook指针:[%p],已存在的Hook目标: [%s]", ptr, (*it).second.second.describe().c_str()));
-        }
+        //if((*it).second.Instance.describe().empty()) {
+        //    on(msgtype::debug, str_fmt("暂不支持重复Hook, addHook 新增Hook失败, hook指针:[%p]", ptr));
+        //}
+        //else {
+        //    on(msgtype::debug, str_fmt("暂不支持重复Hook, addHook 新增Hook失败, hook指针:[%p],已存在的Hook目标: [%s]", ptr, (*it).second.Instance.describe().c_str()));
+        //}
         return nullptr;
     }
     else {
+       // 首先要申请一块内存地址 20字节(占14字节 FF 25 00 00 00 00 XX XX XX XX XX XX XX XX)
+#ifdef _HM_IS_X64
+        byte JMPCODE[] = { 0xFF, 0x25, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 , 0x00, 0x00, 0x00, 0x00 };
+#else
+        byte JMPCODE[] = { 0xE9 , 0x00, 0x00, 0x00, 0x00 };
+#endif // _HM_IS_X64
+        LPVOID allocPtr = VirtualAlloc(NULL, sizeof(JMPCODE), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+        if(allocPtr == NULL) {
+            on(msgtype::error, str_fmt("addHook 新增Hook VirtualAlloc申请内存失败,来自addHook的描述[%s],文件:[%s] 函数: [%s] 行:[%d]", hook_describe.empty()? "无" : hook_describe.c_str(), __FILE__, __FUNCTION__, __LINE__));
+            return nullptr;
+        }
+        memset(allocPtr, 0, sizeof(JMPCODE));
+
+
 #ifdef USE_LIGHTHOOK
         hookInfoHash[ptr] = { CreateHook((void*)ptr, fun), hook_describe.empty() ? HookInstance(ptr) : HookInstance(ptr, hook_describe) };
 #endif // USE_LIGHTHOOK
 
 #ifdef USE_MINHOOK
-        hookInfoHash[ptr] = { ptr, hook_describe.empty() ? HookInstance(ptr) : HookInstance(ptr, hook_describe) };
-        MH_STATUS status = MH_CreateHook((LPVOID)ptr, (LPVOID)fun, reinterpret_cast<LPVOID*>(&hookInfoHash[ptr].second.origin));
+
+
+//#ifdef _HM_IS_X64
+//        uintptr_t* jmp_addr = reinterpret_cast<uintptr_t*>(JMPCODE + 6);
+//        *jmp_addr = (uintptr_t)fun;
+//#else
+//        uintptr_t* jmp_addr = reinterpret_cast<uintptr_t*>(JMPCODE + 1);
+//        *jmp_addr = (uintptr_t)(fun) - ((uintptr_t)allocPtr + 5);
+//#endif
+        memcpy_s(allocPtr, sizeof(JMPCODE), JMPCODE, sizeof(JMPCODE));
+        hookInfoHash[ptr] = {};
+        MH_STATUS status = MH_CreateHook((LPVOID)ptr, (LPVOID)allocPtr, reinterpret_cast<LPVOID*>(&hookInfoHash[ptr].Origin));
+        HookInstance instance = hook_describe.empty() ? HookInstance(ptr, fun) : HookInstance(ptr, fun, hook_describe);
+        hookInfoHash[ptr].Instances = std::vector<HookInstance>();
+        hookInfoHash[ptr].HookPtr = ptr;
+        //hookInfoHash[ptr].JmpPtr = (uintptr_t)jmp_addr;
+        hookInfoHash[ptr].FreePtr = (uintptr_t)allocPtr;
         if(status != MH_OK) {
-            on(msgtype::error, str_fmt("MH_CreateHook 返回标识失败:[%s]，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%d]",MH_StatusToString(status), hook_describe.empty() ? "无" : hook_describe.c_str(), __FILE__, __FUNCTION__, __LINE__));
+            hookInfoHash.erase(ptr);
+            on(msgtype::error, str_fmt("MH_CreateHook失败:[MH_STATUS:%s]，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%d]",MH_StatusToString(status), hook_describe.empty() ? "无" : hook_describe.c_str(), __FILE__, __FUNCTION__, __LINE__));
+            BOOL result = VirtualFree(allocPtr, 0, MEM_RELEASE);
+            if(result == 0) on(msgtype::error, str_fmt("MH_CreateHook失败后,VirtualFree释放内存失败,来自addHook的描述[%s],文件:[%s] 函数: [%s] 行:[%d]", hook_describe.empty() ? "无" : hook_describe.c_str(), __FILE__, __FUNCTION__, __LINE__));
             return nullptr;
         }
+        instance.arrayIndex = hookInfoHash[ptr].Instances.size();
+        // 将自身加入进去
+        hookInfoHash[ptr].Instances.push_back(instance);
 
 #endif // USE_MINHOOK
 
 #ifdef USE_DETOURS
         hookInfoHash[ptr] = { (uintptr_t)fun, hook_describe.empty() ? HookInstance(ptr) : HookInstance(ptr, hook_describe) };
 #endif // USE_DETOURS
-        return &hookInfoHash[ptr].second;
+        return &hookInfoHash[ptr].Instances[hookInfoHash[ptr].Instances.size() - 1];
     }
 }
 
 inline auto HookManager::enableHook(HookInstance& instance) -> bool {
+    if(instance.isEnable()) return true;
+
+    // 如果当前hook目标只有一个 则开启hook
     std::shared_lock<std::shared_mutex> guard(map_lock_mutex);
+
+    // 首先判断有没有启用的hook, 没有则hook, 
+    bool has_enableHook = false;
+    for(auto& ins : hookInfoHash[instance.mapindex()].Instances) {
+        if(ins.isEnable()) {
+            has_enableHook = true;
+            break;
+        }
+    }
+    for(size_t i = instance.arrayIndex + 1; i <= hookInfoHash[instance.mapindex()].Instances.size(); i++) {
+        if(i == hookInfoHash[instance.mapindex()].Instances.size()) {
+            instance.origin = hookInfoHash[instance.mapindex()].Origin;
+            break;
+        }else if(hookInfoHash[instance.mapindex()].Instances[i].isEnable()) {
+            instance.origin = hookInfoHash[instance.mapindex()].Instances[i].fun();
+            break;
+        }
+    }
+
+    // 往前找
+    for(long long i = instance.arrayIndex - 1; i >= -1; i--) {
+        if(i == -1) {
+            // 表示没找到 则将hook所要调用的目标改为自己
+            hookInfoHash[instance.mapindex()].setJmpFun(instance.fun());
+            break;
+        }
+        else if(hookInfoHash[instance.mapindex()].Instances[i].isEnable()) {
+            hookInfoHash[instance.mapindex()].Instances[i].origin = instance.fun();
+            break;
+        }
+    }
+    instance.enable = true;
+
+
 #ifdef USE_LIGHTHOOK
     int ret = EnableHook(&hookInfoHash[instance.mapindex()].first);
     if(ret == 0) {
@@ -254,10 +360,13 @@ inline auto HookManager::enableHook(HookInstance& instance) -> bool {
     return ret;
 #endif // USE_LIGHTHOOK
 #ifdef USE_MINHOOK
-    MH_STATUS status = MH_EnableHook((LPVOID)instance.ptr());
-    if(status != MH_OK) {
-        on(msgtype::error, str_fmt("MH_EnableHook 返回标识失败:[%s]，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%d]", MH_StatusToString(status), instance.describe().empty() ? "无" : instance.describe().c_str(), __FILE__, __FUNCTION__, __LINE__));
-        return false;
+
+    if(!has_enableHook) {
+        MH_STATUS status = MH_EnableHook((LPVOID)instance.ptr());
+        if(status != MH_OK) {
+            on(msgtype::error, str_fmt("MH_EnableHook 返回标识失败:[%s]，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%d]", MH_StatusToString(status), instance.describe().empty() ? "无" : instance.describe().c_str(), __FILE__, __FUNCTION__, __LINE__));
+            return false;
+        }
     }
     return true;
 #endif // USE_MINHOOK
@@ -319,7 +428,52 @@ inline auto HookManager::enableHook(HookInstance& instance) -> bool {
 }
 
 inline auto HookManager::disableHook(HookInstance& instance) -> bool {
+    if(!instance.isEnable()) return true;
     std::shared_lock<std::shared_mutex> guard(map_lock_mutex);
+
+    bool has_enableHook = false;
+    HookInstance* lastcallInstance = nullptr;
+    // 往前找
+    for(long long i = instance.arrayIndex - 1; i >= -1; i--) {
+        if(i == -1) {
+            // 表示没找到 则将hook所要调用的目标改为自己
+            //hookInfoHash[instance.mapindex()].setJmpFun(instance.fun());
+            break;
+        }
+        else if(hookInfoHash[instance.mapindex()].Instances[i].isEnable()) {
+            lastcallInstance = &hookInfoHash[instance.mapindex()].Instances[i];
+            has_enableHook = true;
+            break;
+        }
+    }
+
+    // 往后找
+    for(size_t i = instance.arrayIndex + 1; i <= hookInfoHash[instance.mapindex()].Instances.size(); i++) {
+        if(i == hookInfoHash[instance.mapindex()].Instances.size()) {
+            // 如果没找到开启的
+            instance.origin = nullptr;
+            if(lastcallInstance) {
+                lastcallInstance->origin = hookInfoHash[instance.mapindex()].Origin;
+            }
+            else {
+                hookInfoHash[instance.mapindex()].setJmpFun(hookInfoHash[instance.mapindex()].Origin);
+            }
+            break;
+        }
+        else if(hookInfoHash[instance.mapindex()].Instances[i].isEnable()) {
+            instance.origin = nullptr;
+            has_enableHook = true;
+            if(lastcallInstance) {
+                lastcallInstance->origin = hookInfoHash[instance.mapindex()].Instances[i].fun();
+            }
+            else {
+                hookInfoHash[instance.mapindex()].setJmpFun(hookInfoHash[instance.mapindex()].Instances[i].fun());
+            }
+            break;
+        }
+    }
+    instance.enable = false;
+
 
 #ifdef USE_LIGHTHOOK
     int ret = DisableHook(&hookInfoHash[instance.mapindex()].first);
@@ -329,10 +483,12 @@ inline auto HookManager::disableHook(HookInstance& instance) -> bool {
     return ret;
 #endif // USE_LIGHTHOOK
 #ifdef USE_MINHOOK
-    MH_STATUS status = MH_DisableHook((LPVOID)instance.ptr());
-    if(status != MH_OK) {
-        on(msgtype::error, str_fmt("MH_DisableHook 返回标识失败:[%s]，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%d]", MH_StatusToString(status), instance.describe().empty() ? "无" : instance.describe().c_str(), __FILE__, __FUNCTION__, __LINE__));
-        return false;
+    if(!has_enableHook) {
+        MH_STATUS status = MH_DisableHook((LPVOID)instance.ptr());
+        if(status != MH_OK) {
+            on(msgtype::error, str_fmt("MH_DisableHook 返回标识失败:[%s]，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%d]", MH_StatusToString(status), instance.describe().empty() ? "无" : instance.describe().c_str(), __FILE__, __FUNCTION__, __LINE__));
+            return false;
+        }
     }
     return true;
 #endif // USE_MINHOOK
@@ -407,9 +563,15 @@ inline auto HookManager::enableAllHook() -> void {
 
 #ifdef USE_MINHOOK
     for(auto& item : hookInfoHash) {
-        MH_STATUS status = MH_EnableHook((LPVOID)item.second.first);
-        if(status != MH_OK) {
-            on(msgtype::error, str_fmt("MH_EnableHook 返回标识失败:[%s]，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%d]", MH_StatusToString(status), item.second.second.describe().empty() ? "无" : item.second.second.describe().c_str(), __FILE__, __FUNCTION__, __LINE__));
+        for(auto& ins : item.second.Instances) {
+            if(ins.isEnable()) {
+                // 如果此项里面有开启的
+                MH_STATUS status = MH_EnableHook((LPVOID)item.second.HookPtr);
+                if(status != MH_OK) {
+                    on(msgtype::error, str_fmt("MH_EnableHook 返回标识失败:[%s],文件:[%s] 函数: [%s] 行:[%d]", MH_StatusToString(status), __FILE__, __FUNCTION__, __LINE__));
+                }
+                break;
+            }
         }
     }
 #endif // USE_MINHOOK
@@ -486,10 +648,17 @@ inline auto HookManager::disableAllHook() -> void {
     
 #ifdef USE_MINHOOK
     for(auto& item : hookInfoHash) {
-        MH_STATUS status = MH_DisableHook((LPVOID)item.second.first);
-        if(status != MH_OK) {
-            on(msgtype::error, str_fmt("MH_DisableHook 返回标识失败:[%s]，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%d]", MH_StatusToString(status), item.second.second.describe().empty() ? "无" : item.second.second.describe().c_str(), __FILE__, __FUNCTION__, __LINE__));
+        for(auto& ins : item.second.Instances) {
+            if(ins.isEnable()) {
+                // 如果此项里面有开启的
+                MH_STATUS status = MH_DisableHook((LPVOID)item.second.HookPtr);
+                if(status != MH_OK) {
+                    on(msgtype::error, str_fmt("MH_DisableHook 返回标识失败:[%s]，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%d]", MH_StatusToString(status), __FILE__, __FUNCTION__, __LINE__));
+                }
+                break;
+            }
         }
+
     }
 #endif // USE_MINHOOK
 
@@ -549,13 +718,13 @@ inline auto HookManager::disableAllHook() -> void {
 #endif // USE_DETOURS
 }
 
-inline auto HookManager::findHookInstance(uintptr_t indexptr) -> HookInstance* {
+inline auto HookManager::findHookInstance(uintptr_t indexptr) -> std::vector<HookInstance> {
     std::shared_lock<std::shared_mutex> guard(map_lock_mutex);
     auto it = hookInfoHash.find(indexptr);
     if(it != hookInfoHash.end()) {
-        return &((*it).second.second);
+        return ((*it).second.Instances);
     }
-    return nullptr;
+    return {};
 }
 
 inline auto HookManager::on(MessageEvent ev) -> void {
@@ -572,6 +741,10 @@ inline uintptr_t& HookInstance::ptr() {
 
 inline uintptr_t HookInstance::ptr() const {
     return m_ptr;
+}
+
+inline void* HookInstance::fun() {
+    return m_fun;
 }
 
 inline std::string HookInstance::describe() const {
