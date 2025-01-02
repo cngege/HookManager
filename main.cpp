@@ -1,15 +1,15 @@
 ﻿// 定义应用程序的入口点。
 //
-//#define USE_LIGHTHOOK
+#define USE_LIGHTHOOK
 //#define USE_MINHOOK
-#define USE_DETOURS
+//#define USE_DETOURS
 #define EXTERNAL_INCLUDE_HOOKHEADER
 
 #ifdef EXTERNAL_INCLUDE_HOOKHEADER
 //#include <MinHook.h>
-//#include "LightHook/Source/LightHook.h"
-#include <Windows.h>
-#include "detours/detours.h"
+#include "LightHook/Source/LightHook.h"
+//#include <Windows.h>
+//#include "detours/detours.h"
 #endif // EXTERNAL_INCLUDE_HOOKHEADER
 
 
@@ -22,17 +22,6 @@ HookInstance* h2 = nullptr;
 
 // hook在Release模式下一定要考虑到内联和优化的问题
 static __declspec(noinline) int add(int a, int b) {
-    if(a > 0) {
-        int c = a + 1;
-        int d = a - 1;
-        int e = a + c + d;
-    }
-    else if(a == 0) {
-        int c = a + 2;
-    }
-    else if(b == a) {
-        a = b;
-    }
     return a + b;
 }
 
@@ -40,7 +29,7 @@ static __declspec(noinline) int hookadd(int a, int b) {
     return h->oriForSign(add)(a,b) * 10;
 }
 static __declspec(noinline) int hookadd2(int a, int b) {
-    return h2->oriForSign(add)(a, b) * 10;
+    return h2->oriForSign(add)(a, b) * 11;
 }
 
 
@@ -63,8 +52,8 @@ static void test() {
         }
     });
 
-    std::cout << "&add:";
-    printf_s("%p \n", &add);
+    //std::cout << "&add:";
+    //printf_s("%p \n", &add);
 
     std::cout << "add(5,6):" << add(5, 6) << std::endl;
     h = HookManager::getInstance()->addHook((uintptr_t)&add, &hookadd, "hookadd1");
@@ -90,16 +79,12 @@ static void test() {
     //}
     HookManager::getInstance()->disableAllHook();
     std::cout << "add(11,12):" << add(11, 12) << std::endl;
-    // 试图重复添加Hook - 将会产生一个debug消息
-    //auto* _ = HookManager::getInstance()->addHook((uintptr_t)&add, &hookadd);
     
-    system("pause");
 }
 
 int main()
 {
     test();
     std::cout << "add(13,14):" << add(13, 14) << std::endl;
-    system("pause");
     return 0;
 }

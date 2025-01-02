@@ -82,6 +82,12 @@ public:
     bool hook();
     bool unhook();
 
+    /**
+     * @brief 无类型指针自动转为函数指针
+     * @tparam T 函数类型，可传参后自动提取
+     * @param sign 传入被hook的函数
+     * @return 
+     */
     template<typename T>
     T oriForSign(T sign) {
         return static_cast<T>(origin);
@@ -93,11 +99,11 @@ struct HookTarget {
     /**
      * @brief 被hook函数的原始地址
      */
-    uintptr_t HookPtr;
+    uintptr_t HookPtr = 0;
     /**
      * @brief Hook后的转道地址, 也是uninit时要释放的地址
      */
-    uintptr_t FreePtr;
+    uintptr_t FreePtr = 0;
     void* Origin = nullptr;
     /**
      * @brief 此hook是否开启
@@ -121,7 +127,7 @@ struct HookTarget {
         return FreePtr + 1;
 #endif
     }
-}_;
+};
 
 class HookManager
 {
@@ -198,6 +204,12 @@ public:
      */
     auto on(MessageEvent ev) -> void;
 
+    /**
+     * @brief 获取Hook对应访问原函数的指针
+     * @param ptr 
+     * @return 
+     */
+    auto getRealOrigin(uintptr_t ptr) -> void*;
 private:
     auto on(msgtype type, const char* fmt, ...)->void;
     
@@ -261,6 +273,7 @@ inline auto HookManager::uninit() -> void {
         on(msgtype::error, "MH_Uninitialize 反初始化失败:[%s]，文件:[%s] 函数: [%s] 行:[%d],", MH_StatusToString(uninit_status), __FILE__, __FUNCTION__, __LINE__);
     }
 #endif // USE_MINHOOK
+    on(msgtype::info, "~HookManager() 已进行释放");
 }
 
 inline auto HookManager::updateLastOrigin(HookTarget* target) -> void {
@@ -856,6 +869,15 @@ inline auto HookManager::findHookInstance(uintptr_t indexptr) -> std::vector<Hoo
 
 inline auto HookManager::on(MessageEvent ev) -> void {
     event = ev;
+}
+
+inline auto HookManager::getRealOrigin(uintptr_t indexptr) -> void* {
+    std::shared_lock<std::shared_mutex> guard(map_lock_mutex);
+    auto it = hookInfoHash.find(indexptr);
+    if(it != hookInfoHash.end()) {
+        return (*it).second.Origin;
+    }
+    return nullptr;
 }
 
 inline auto HookManager::on(msgtype type, const char* fmt, ...) -> void {
