@@ -1,13 +1,13 @@
 ﻿// 定义应用程序的入口点。
 //
-//#define USE_LIGHTHOOK
-#define USE_MINHOOK
+#define USE_LIGHTHOOK
+//#define USE_MINHOOK
 //#define USE_DETOURS
-//#define EXTERNAL_INCLUDE_HOOKHEADER
+#define EXTERNAL_INCLUDE_HOOKHEADER
 
 #ifdef EXTERNAL_INCLUDE_HOOKHEADER
-#include <MinHook.h>
-//#include "LightHook/Source/LightHook.h"
+//#include <MinHook.h>
+#include "LightHook/Source/LightHook.h"
 //#include <Windows.h>
 //#include "detours/detours.h"
 #endif // EXTERNAL_INCLUDE_HOOKHEADER
@@ -63,19 +63,24 @@ static void test() {
         std::cout << "hook fail!!!" << std::endl;
     }
 
+
+    std::cout << "hooked 1:" << std::endl;
+    std::cout << "add(7,8):" << add(7, 8) << std::endl;
+
     h2 = HookManager::getInstance()->addHook((uintptr_t)&add, &hookadd2, "hookadd2");
     if(!h2->hook()) {
         std::cout << "hook2 fail!!!" << std::endl;
     }
 
-    std::cout << "hooked:" << std::endl;
-    std::cout << "add(7,8):" << add(7, 8) << std::endl;
+    std::cout << "hooked 2:" << std::endl;
+    std::cout << "add(9,10):" << add(9, 10) << std::endl;
+
     //std::cout << "removehook:" << std::endl;
     //if(!h->unhook() || !h2->unhook()) {
     //    std::cout << "unhook fail!!!" << std::endl;
     //}
     HookManager::getInstance()->disableAllHook();
-    std::cout << "add(9,10):" << add(9, 10) << std::endl;
+    std::cout << "add(11,12):" << add(11, 12) << std::endl;
     // 试图重复添加Hook - 将会产生一个debug消息
     //auto* _ = HookManager::getInstance()->addHook((uintptr_t)&add, &hookadd);
     
@@ -84,10 +89,8 @@ static void test() {
 
 int main()
 {
-
-
     test();
-    std::cout << "add(11,12):" << add(11, 12) << std::endl;
+    std::cout << "add(13,14):" << add(13, 14) << std::endl;
     system("pause");
     return 0;
 }

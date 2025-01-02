@@ -10,14 +10,14 @@
 // 如果定义 EXTERNAL_INCLUDE_HOOKHEADER 宏，则表示引用底层Hook的头文件由外部实现
 
 #ifdef USE_LIGHTHOOK
-#ifndef EXTERNAL_INCLUDE_HOOKHEADER
 #include <Windows.h>
+#ifndef EXTERNAL_INCLUDE_HOOKHEADER
 #include <lighthook/LightHook.h>
 #endif // EXTERNAL_INCLUDE_HOOKHEADER
 
 #elif defined USE_DETOURS
+#include <Windows.h>
 #ifndef EXTERNAL_INCLUDE_HOOKHEADER
-#include <windows.h>
 #include <detours.h>
 //#include "detours/detours.h"
 #endif // EXTERNAL_INCLUDE_HOOKHEADER
@@ -109,7 +109,7 @@ struct HookTarget {
         return FreePtr + 1;
 #endif
     }
-};
+}_;
 
 class HookManager
 {
@@ -201,7 +201,7 @@ private:
 
 ////////////////////////////////////////////////
 
-static std::string str_fmt(const char* fmt, ...);
+//static std::string str_fmt(const char* fmt, ...);
 
 ////////////////////////////////////////////////
 
@@ -269,9 +269,9 @@ inline auto HookManager::addHook(uintptr_t ptr, void* fun, std::string hook_desc
     else {
        // 首先要申请一块内存地址 20字节(占14字节 FF 25 00 00 00 00 XX XX XX XX XX XX XX XX)
 #ifdef _HM_IS_X64
-        byte JMPCODE[] = { 0xFF, 0x25, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 , 0x00, 0x00, 0x00, 0x00 };
+        UCHAR JMPCODE[] = { 0xFF, 0x25, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 , 0x00, 0x00, 0x00, 0x00 };
 #else
-        byte JMPCODE[] = { 0xE9 , 0x00, 0x00, 0x00, 0x00 };
+        UCHAR JMPCODE[] = { 0xE9 , 0x00, 0x00, 0x00, 0x00 };
 #endif // _HM_IS_X64
         LPVOID allocPtr = VirtualAlloc(NULL, sizeof(JMPCODE), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
         if(allocPtr == NULL) {
@@ -281,20 +281,25 @@ inline auto HookManager::addHook(uintptr_t ptr, void* fun, std::string hook_desc
         memset(allocPtr, 0, sizeof(JMPCODE));
         memcpy_s(allocPtr, sizeof(JMPCODE), JMPCODE, sizeof(JMPCODE));
         hookInfoHash[ptr] = {};
+        hookInfoHash[ptr].FreePtr = (uintptr_t)allocPtr;
+        hookInfoHash[ptr].HookPtr = ptr;
+        hookInfoHash[ptr].Instances = std::vector<HookInstance*>();
+        HookInstance* instance = new HookInstance(ptr, fun, hook_describe);
 
 #ifdef USE_LIGHTHOOK
-        hookInfoHash[ptr] = { CreateHook((void*)ptr, fun), hook_describe.empty() ? HookInstance(ptr) : HookInstance(ptr, hook_describe) };
+        hookInfoHash[ptr].HookInfo = CreateHook((void*)ptr, (void*)allocPtr);
+        instance->arrayIndex = hookInfoHash[ptr].Instances.size();
+        // 将自身加入进去
+        hookInfoHash[ptr].Instances.push_back(instance);
+
 #endif // USE_LIGHTHOOK
 
 #ifdef USE_MINHOOK
         
         
         MH_STATUS status = MH_CreateHook((LPVOID)ptr, (LPVOID)allocPtr, reinterpret_cast<LPVOID*>(&hookInfoHash[ptr].Origin));
-        HookInstance* instance = new HookInstance(ptr, fun, hook_describe);
-        hookInfoHash[ptr].Instances = std::vector<HookInstance*>();
-        hookInfoHash[ptr].HookPtr = ptr;
-        //hookInfoHash[ptr].JmpPtr = (uintptr_t)jmp_addr;
-        hookInfoHash[ptr].FreePtr = (uintptr_t)allocPtr;
+        //hookInfoHash[ptr].Instances = std::vector<HookInstance*>();
+        //hookInfoHash[ptr].HookPtr = ptr;
         if(status != MH_OK) {
             hookInfoHash.erase(ptr);
             on(msgtype::error, "MH_CreateHook失败:[MH_STATUS:%s]，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%d]", MH_StatusToString(status), hook_describe.empty() ? "无" : hook_describe.c_str(), __FILE__, __FUNCTION__, __LINE__);
@@ -356,15 +361,20 @@ inline auto HookManager::enableHook(HookInstance& instance) -> bool {
     // 首先判断有没有启用的hook, 没有则hook, 
     // 自身除外是否存在已经启用的hook
     bool has_enableHook = false;
+    // 自己是否是最后一个
+    bool current_is_end = false;
     for(auto& ins : hookInfoHash[instance.mapindex()].Instances) {
         if(ins->isEnable()) {
             has_enableHook = true;
             break;
         }
     }
+    // 往后找
     for(size_t i = instance.arrayIndex + 1; i <= hookInfoHash[instance.mapindex()].Instances.size(); i++) {
         if(i == hookInfoHash[instance.mapindex()].Instances.size()) {
+            // 自己是最后一个 自己要调用的应该是真实的函数
             instance.origin = hookInfoHash[instance.mapindex()].Origin;
+            current_is_end = true;
             break;
         }else if(hookInfoHash[instance.mapindex()].Instances[i]->isEnable()) {
             instance.origin = hookInfoHash[instance.mapindex()].Instances[i]->fun();
@@ -391,12 +401,19 @@ inline auto HookManager::enableHook(HookInstance& instance) -> bool {
     }
 
 #ifdef USE_LIGHTHOOK
-    int ret = EnableHook(&hookInfoHash[instance.mapindex()].first);
-    if(ret == 0) {
-        on(msgtype::error, "LightHook EnableHook 失败，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%d]", instance.describe().empty() ? "无" : instance.describe().c_str(), __FILE__, __FUNCTION__, __LINE__);
+    if(!has_enableHook) {
+        int ret = EnableHook(&hookInfoHash[instance.mapindex()].HookInfo);
+        if(ret == 0) {
+            on(msgtype::error, "LightHook EnableHook 失败，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%d]", instance.describe().empty() ? "无" : instance.describe().c_str(), __FILE__, __FUNCTION__, __LINE__);
+            return false;
+        }
+        (&hookInfoHash[instance.mapindex()])->hookEnable = true;
+        (&hookInfoHash[instance.mapindex()])->Origin = hookInfoHash[instance.mapindex()].HookInfo.Trampoline;
+        if(current_is_end) {
+            instance.origin = hookInfoHash[instance.mapindex()].Origin;
+        }
     }
-    instance.origin = hookInfoHash[instance.mapindex()].first.Trampoline;
-    return ret;
+    return true;
 #endif // USE_LIGHTHOOK
 #ifdef USE_MINHOOK
 
@@ -519,11 +536,15 @@ inline auto HookManager::disableHook(HookInstance& instance) -> bool {
     // 这里的关闭hook是自动管理
 
 #ifdef USE_LIGHTHOOK
-    int ret = DisableHook(&hookInfoHash[instance.mapindex()].first);
-    if(ret == 0) {
-        on(msgtype::error, "LightHook DisableHook 失败，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%d]", instance.describe().empty() ? "无" : instance.describe().c_str(), __FILE__, __FUNCTION__, __LINE__);
-        return false;
+    if(!has_enableHook) {
+        int ret = DisableHook(&hookInfoHash[instance.mapindex()].HookInfo);
+        if(ret == 0) {
+            on(msgtype::error, "LightHook DisableHook 失败，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%d]", instance.describe().empty() ? "无" : instance.describe().c_str(), __FILE__, __FUNCTION__, __LINE__);
+            return false;
+        }
+        (&hookInfoHash[instance.mapindex()])->hookEnable = false;
     }
+
 #endif // USE_LIGHTHOOK
 #ifdef USE_MINHOOK
     if(!has_enableHook) {
@@ -598,9 +619,21 @@ inline auto HookManager::enableAllHook() -> void {
 
 #ifdef USE_LIGHTHOOK
     for(auto& item : hookInfoHash) {
-        if(!item.second.first.Enabled) {
-            if(!EnableHook(&item.second.first)) {
-                on(msgtype::error, "LightHook EnableHook 开启Hook失败，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%d]", item.second.second.describe().empty() ? "无" : item.second.second.describe().c_str(), __FILE__, __FUNCTION__, __LINE__);
+        // 如果此项的hook已经是开启状态 则跳过
+        if(item.second.hookEnable) continue;
+        // 轮询所有单例
+        for(auto& ins : item.second.Instances) {
+            // 如果有开启的单例
+            if(ins->isEnable()) {
+                if(!item.second.HookInfo.Enabled) {
+                    if(!EnableHook(&item.second.HookInfo)) {
+                        on(msgtype::error, "LightHook EnableHook 开启Hook失败,文件:[%s] 函数: [%s] 行:[%d]", __FILE__, __FUNCTION__, __LINE__);
+                        break;
+                    }
+                }
+                (&hookInfoHash[ins->mapindex()])->hookEnable = true;
+                (&hookInfoHash[ins->mapindex()])->Origin = item.second.HookInfo.Trampoline;
+                break;
             }
         }
     }
@@ -686,9 +719,19 @@ inline auto HookManager::disableAllHook() -> void {
 
 #ifdef USE_LIGHTHOOK
     for(auto& item : hookInfoHash) {
-        if(item.second.first.Enabled) {
-            if(!DisableHook(&item.second.first)) {
-                on(msgtype::error, "LightHook DisableHook 关闭Hook失败，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%d]", item.second.second.describe().empty() ? "无" : item.second.second.describe().c_str(), __FILE__, __FUNCTION__, __LINE__);
+        // 如果此项本来就是已经关闭状态，则跳过
+        if(!item.second.hookEnable) continue;
+        // 轮询所有单例
+        for(auto& ins : item.second.Instances) {
+            if(ins->isEnable()) {
+                if(item.second.HookInfo.Enabled) {
+                    if(!DisableHook(&item.second.HookInfo)) {
+                        on(msgtype::error, "LightHook DisableHook 关闭Hook失败,文件:[%s] 函数: [%s] 行:[%d]", __FILE__, __FUNCTION__, __LINE__);
+                        break;
+                    }
+                }
+                (&hookInfoHash[ins->mapindex()])->hookEnable = false;
+                break;
             }
         }
     }
