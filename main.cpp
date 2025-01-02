@@ -1,15 +1,15 @@
 ﻿// 定义应用程序的入口点。
 //
-#define USE_LIGHTHOOK
+//#define USE_LIGHTHOOK
 //#define USE_MINHOOK
-//#define USE_DETOURS
+#define USE_DETOURS
 #define EXTERNAL_INCLUDE_HOOKHEADER
 
 #ifdef EXTERNAL_INCLUDE_HOOKHEADER
 //#include <MinHook.h>
-#include "LightHook/Source/LightHook.h"
-//#include <Windows.h>
-//#include "detours/detours.h"
+//#include "LightHook/Source/LightHook.h"
+#include <Windows.h>
+#include "detours/detours.h"
 #endif // EXTERNAL_INCLUDE_HOOKHEADER
 
 
@@ -22,15 +22,24 @@ HookInstance* h2 = nullptr;
 
 // hook在Release模式下一定要考虑到内联和优化的问题
 static __declspec(noinline) int add(int a, int b) {
+    if(a > 0) {
+        int c = a + 1;
+        int d = a - 1;
+        int e = a + c + d;
+    }
+    else if(a == 0) {
+        int c = a + 2;
+    }
+    else if(b == a) {
+        a = b;
+    }
     return a + b;
 }
 
 static __declspec(noinline) int hookadd(int a, int b) {
-    //using fn = int(__fastcall*)(int, int);
     return h->oriForSign(add)(a,b) * 10;
 }
 static __declspec(noinline) int hookadd2(int a, int b) {
-    //using fn = int(__fastcall*)(int, int);
     return h2->oriForSign(add)(a, b) * 10;
 }
 
