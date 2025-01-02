@@ -88,9 +88,9 @@ public:
 struct HookTarget {
     std::vector<HookInstance*> Instances;
     uintptr_t HookPtr;
-    //uintptr_t JmpPtr;
     uintptr_t FreePtr;
     void* Origin = nullptr;
+    bool hookEnable = false;
 #ifdef USE_LIGHTHOOK
     HookInformation HookInfo;
 #endif // USE_MINHOOK
@@ -373,7 +373,7 @@ inline auto HookManager::enableHook(HookInstance& instance) -> bool {
     }
 
     // 往前找
-    for(long long i = instance.arrayIndex - 1; i >= -1; i--) {
+    for(long i = instance.arrayIndex - 1; i >= -1; i--) {
         if(i == -1) {
             // 表示没找到 则将hook所要调用的目标改为自己
             hookInfoHash[instance.mapindex()].setJmpFun(instance.fun());
@@ -385,7 +385,10 @@ inline auto HookManager::enableHook(HookInstance& instance) -> bool {
         }
     }
     instance.enable = true;
-
+    // Hook已经是开启状态
+    if(hookInfoHash[instance.mapindex()].hookEnable) {
+        return true;
+    }
 
 #ifdef USE_LIGHTHOOK
     int ret = EnableHook(&hookInfoHash[instance.mapindex()].first);
@@ -403,6 +406,7 @@ inline auto HookManager::enableHook(HookInstance& instance) -> bool {
             on(msgtype::error, "MH_EnableHook 返回标识失败:[%s]，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%d]", MH_StatusToString(status), instance.describe().empty() ? "无" : instance.describe().c_str(), __FILE__, __FUNCTION__, __LINE__);
             return false;
         }
+        (&hookInfoHash[instance.mapindex()])->hookEnable = true;
     }
     return true;
 #endif // USE_MINHOOK
@@ -470,7 +474,7 @@ inline auto HookManager::disableHook(HookInstance& instance) -> bool {
     bool has_enableHook = false;
     HookInstance* lastcallInstance = nullptr;
     // 往前找
-    for(long long i = instance.arrayIndex - 1; i >= -1; i--) {
+    for(long i = instance.arrayIndex - 1; i >= -1; i--) {
         if(i == -1) {
             // 表示没找到 则将hook所要调用的目标改为自己
             //hookInfoHash[instance.mapindex()].setJmpFun(instance.fun());
@@ -510,12 +514,16 @@ inline auto HookManager::disableHook(HookInstance& instance) -> bool {
     }
 
     instance.enable = false;
+
+    if(!hookInfoHash[instance.mapindex()].hookEnable) return true;
+    // 这里的关闭hook是自动管理
+
 #ifdef USE_LIGHTHOOK
     int ret = DisableHook(&hookInfoHash[instance.mapindex()].first);
     if(ret == 0) {
         on(msgtype::error, "LightHook DisableHook 失败，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%d]", instance.describe().empty() ? "无" : instance.describe().c_str(), __FILE__, __FUNCTION__, __LINE__);
+        return false;
     }
-    return ret;
 #endif // USE_LIGHTHOOK
 #ifdef USE_MINHOOK
     if(!has_enableHook) {
@@ -524,8 +532,8 @@ inline auto HookManager::disableHook(HookInstance& instance) -> bool {
             on(msgtype::error, "MH_DisableHook 返回标识失败:[%s]，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%d]", MH_StatusToString(status), instance.describe().empty() ? "无" : instance.describe().c_str(), __FILE__, __FUNCTION__, __LINE__);
             return false;
         }
+        (&hookInfoHash[instance.mapindex()])->hookEnable = false;
     }
-    return true;
 #endif // USE_MINHOOK
 
 #ifdef USE_DETOURS
@@ -579,8 +587,10 @@ inline auto HookManager::disableHook(HookInstance& instance) -> bool {
         DetourTransactionAbort();
         return false;
     }
-    return true;
+    
 #endif // USE_MINHOOK
+
+    return true;
 }
 
 inline auto HookManager::enableAllHook() -> void {
@@ -598,6 +608,8 @@ inline auto HookManager::enableAllHook() -> void {
 
 #ifdef USE_MINHOOK
     for(auto& item : hookInfoHash) {
+        // 如果此项的hook已经是开启状态 则跳过
+        if(item.second.hookEnable) continue;
         for(auto& ins : item.second.Instances) {
             if(ins->isEnable()) {
                 // 如果此项里面有开启的
@@ -605,6 +617,7 @@ inline auto HookManager::enableAllHook() -> void {
                 if(status != MH_OK) {
                     on(msgtype::error, "MH_EnableHook 返回标识失败:[%s],文件:[%s] 函数: [%s] 行:[%d]", MH_StatusToString(status), __FILE__, __FUNCTION__, __LINE__);
                 }
+                (&hookInfoHash[ins->mapindex()])->hookEnable = true;
                 break;
             }
         }
@@ -683,13 +696,16 @@ inline auto HookManager::disableAllHook() -> void {
     
 #ifdef USE_MINHOOK
     for(auto& item : hookInfoHash) {
+        // 如果此项本来就是已经关闭状态，则跳过
+        if(!item.second.hookEnable) continue;
         for(auto& ins : item.second.Instances) {
             if(ins->isEnable()) {
                 // 如果此项里面有开启的
                 MH_STATUS status = MH_DisableHook((LPVOID)item.second.HookPtr);
                 if(status != MH_OK) {
-                    on(msgtype::error, "MH_DisableHook 返回标识失败:[%s]，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%d]", MH_StatusToString(status), __FILE__, __FUNCTION__, __LINE__);
+                    on(msgtype::error, "MH_DisableHook 返回标识失败:[%s],文件:[%s] 函数: [%s] 行:[%d]", MH_StatusToString(status), __FILE__, __FUNCTION__, __LINE__);
                 }
+                (&hookInfoHash[ins->mapindex()])->hookEnable = false;
                 break;
             }
         }

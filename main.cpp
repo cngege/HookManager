@@ -87,6 +87,7 @@ int main()
 
 
     test();
+    std::cout << "add(11,12):" << add(11, 12) << std::endl;
     system("pause");
     return 0;
 }
