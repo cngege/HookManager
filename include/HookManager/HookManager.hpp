@@ -9,12 +9,14 @@
 // 定义 USE_LIGHTHOOK 宏或定义 USE_MINHOOK, 来表示使用何种Hook实现底层逻辑
 // 如果定义 EXTERNAL_INCLUDE_HOOKHEADER 宏，则表示引用底层Hook的头文件由外部实现
 
+// 如果使用LightHook 进行底层hook创建
 #ifdef USE_LIGHTHOOK
 #include <Windows.h>
 #ifndef EXTERNAL_INCLUDE_HOOKHEADER
 #include <lighthook/LightHook.h>
 #endif // EXTERNAL_INCLUDE_HOOKHEADER
 
+// 如果使用微软 进行底层hook创建
 #elif defined USE_DETOURS
 #include <Windows.h>
 #ifndef EXTERNAL_INCLUDE_HOOKHEADER
@@ -22,6 +24,7 @@
 //#include "detours/detours.h"
 #endif // EXTERNAL_INCLUDE_HOOKHEADER
 
+// 如果使用MINHOOK 进行底层hook创建
 #elif defined USE_MINHOOK
 #ifndef EXTERNAL_INCLUDE_HOOKHEADER
 #include <MinHook.h>
@@ -103,7 +106,7 @@ struct HookTarget {
 #ifdef USE_LIGHTHOOK
     HookInformation HookInfo;
 #endif // USE_MINHOOK
-    void setJmpFun(void* fun) {
+    void setJmpFun(void* fun) const {
         uintptr_t* jmp_addr = reinterpret_cast<uintptr_t*>(getJmpAddress());
 #ifdef _HM_IS_X64
         *jmp_addr = (uintptr_t)fun;
@@ -261,7 +264,7 @@ inline auto HookManager::uninit() -> void {
 }
 
 inline auto HookManager::updateLastOrigin(HookTarget* target) -> void {
-    for(long i = target->Instances.size() - 1; i >= 0; i--) {
+    for(long i = static_cast<long>(target->Instances.size()) - 1; i >= 0; i--) {
         if(target->Instances[i]->isEnable()) {
             target->Instances[i]->origin = target->Origin;
             break;
@@ -405,7 +408,7 @@ inline auto HookManager::enableHook(HookInstance& instance) -> bool {
     }
 
     // 往前找
-    for(long i = instance.arrayIndex - 1; i >= -1; i--) {
+    for(long i = static_cast<long>(instance.arrayIndex) - 1; i >= -1; i--) {
         if(i == -1) {
             // 表示没找到 则将hook所要调用的目标改为自己
             hookInfoHash[instance.mapindex()].setJmpFun(instance.fun());
@@ -422,7 +425,7 @@ inline auto HookManager::enableHook(HookInstance& instance) -> bool {
         return true;
     }
     if(has_enableHook) return true;
-#ifdef USE_LIGHTHOOK
+#ifdef USE_LIGHTHOOK 
     int ret = EnableHook(&hookInfoHash[instance.mapindex()].HookInfo);
     if(ret == 0) {
         on(msgtype::error, "LightHook EnableHook 失败，目标Hook描述信息:[%s],文件:[%s] 函数: [%s] 行:[%d]", instance.describe().empty() ? "无" : instance.describe().c_str(), __FILE__, __FUNCTION__, __LINE__);
@@ -507,7 +510,7 @@ inline auto HookManager::disableHook(HookInstance& instance) -> bool {
     bool has_enableHook = false;
     HookInstance* lastcallInstance = nullptr;
     // 往前找
-    for(long i = instance.arrayIndex - 1; i >= -1; i--) {
+    for(long i = static_cast<long>(instance.arrayIndex) - 1; i >= -1; i--) {
         if(i == -1) {
             break;
         }
